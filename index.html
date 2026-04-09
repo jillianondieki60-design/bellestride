@@ -167,7 +167,9 @@
         <div class="container mx-auto px-4 py-4">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3">
-                    <img src="products/ICON.jpg" alt="Bellestride" class="w-10 h-10 rounded-full object-cover">
+                    <div id="header-logo" class="w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-400 rounded-full flex items-center justify-center">
+    <i class="fas fa-high-heel text-white text-lg"></i>
+</div>
                     <h1 class="text-3xl font-bold hero-title">Bellestride</h1>
                 </div>
                 <div class="flex items-center space-x-4">
@@ -355,6 +357,35 @@
 
                 <!-- Admin Content (hidden by default) -->
                 <div id="admin-content" class="hidden">
+                    <!-- Logo Management -->
+                    <div class="mb-8 p-6 bg-gradient-to-r from-pink-50 to-orange-50 border-2 border-pink-200 rounded-lg">
+                        <h4 class="font-bold text-lg mb-4 text-pink-800">Logo Management</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Current Logo:</label>
+                                <div class="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg bg-white">
+                                    <img id="current-logo" src="" alt="Current Logo" class="w-16 h-16 rounded-full object-cover">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Upload New Logo:</label>
+                                <input type="file" id="logo-upload" accept="image/*" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:border-pink-500">
+                                <button onclick="uploadLogo()" class="mt-2 w-full bg-gradient-to-r from-pink-500 to-orange-400 text-white px-4 py-2 rounded-lg hover:from-pink-600 hover:to-orange-500 transition font-semibold">
+                                    <i class="fas fa-upload mr-2"></i>Upload Logo
+                                </button>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 text-sm font-bold mb-2">Preview:</label>
+                                <div class="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg bg-white">
+                                    <img id="logo-preview" src="" alt="Logo Preview" class="w-16 h-16 rounded-full object-cover hidden">
+                                </div>
+                                <button onclick="resetLogo()" class="mt-2 w-full bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition font-semibold">
+                                    <i class="fas fa-undo mr-2"></i>Reset to Default
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Add Product Form -->
                     <div class="mb-8 p-6 bg-blue-50 border-2 border-blue-200 rounded-lg">
                         <h4 class="font-bold text-lg mb-4 text-blue-800">Add New Product</h4>
@@ -435,7 +466,7 @@
                     <!-- Orders Management -->
                     <div class="mt-8">
                         <h4 class="font-semibold mb-4">Recent Orders</h4>
-                        <div id="orders-list" class="space-y-4">
+                        <div id="admin-orders-list" class="space-y-4">
                             <!-- Orders will be loaded here -->
                         </div>
                     </div>
@@ -443,6 +474,10 @@
             </div>
         </div>
     </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
 
     <script src="script.js"></script>
 </body>
