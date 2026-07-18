@@ -6,29 +6,524 @@ let cart = [];
 let orders = [];
 let currentFilter = 'all';
 
-// Initialize app
+// GitHub Pages Compatible Data Management
+let githubConfig = {
+    repo: '', // Will be set automatically
+    branch: 'main',
+    logoPath: 'assets/logo.png',
+    productsPath: 'data/products.json',
+    ordersPath: 'data/orders.json',
+    token: '' // Will be set by admin
+};
+
+// Logo Management Functions
+function initializeLogo() {
+    // Try to detect GitHub Pages environment
+    if (window.location.hostname.includes('github.io')) {
+        const pathParts = window.location.pathname.split('/');
+        if (pathParts.length > 1) {
+            githubConfig.repo = pathParts[1];
+        }
+        loadLogoFromGitHub();
+    } else {
+        // Fallback to localStorage for local development
+        const savedLogo = localStorage.getItem('bellestrideLogo');
+        if (savedLogo) {
+            updateLogoDisplay(savedLogo);
+            const currentLogoImg = document.getElementById('current-logo');
+            if (currentLogoImg) {
+                currentLogoImg.src = savedLogo;
+            }
+        } else {
+            const defaultLogo = '<div class="w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-400 rounded-full flex items-center justify-center"><i class="fas fa-high-heel text-white text-lg"></i></div>';
+            document.getElementById('header-logo').innerHTML = defaultLogo;
+        }
+    }
+}
+
+function uploadLogo() {
+    const fileInput = document.getElementById('logo-upload');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showNotification('Please select a logo file', 'error');
+        return;
+    }
+    
+    if (!file.type.startsWith('image/')) {
+        showNotification('Please select an image file', 'error');
+        return;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        showNotification('Logo size must be less than 5MB', 'error');
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const logoData = e.target.result;
+        
+        if (window.location.hostname.includes('github.io')) {
+            // GitHub Pages deployment - save to GitHub
+            saveLogoToGitHub(logoData);
+        } else {
+            // Local development - save to localStorage
+            localStorage.setItem('bellestrideLogo', logoData);
+            updateLogoDisplay(logoData);
+            const currentLogoImg = document.getElementById('current-logo');
+            if (currentLogoImg) {
+                currentLogoImg.src = logoData;
+            }
+            showNotification('Logo uploaded successfully! It will remain until you change it.', 'success');
+        }
+        
+        // Clear the file input
+        fileInput.value = '';
+    };
+    reader.readAsDataURL(file);
+}
+
+function updateLogoDisplay(logoData) {
+    const headerLogo = document.getElementById('header-logo');
+    headerLogo.innerHTML = `<img src="${logoData}" alt="Bellestride" class="w-10 h-10 rounded-full object-cover">`;
+}
+
+function resetLogo() {
+    if (window.location.hostname.includes('github.io')) {
+        // GitHub Pages - delete logo from GitHub
+        deleteLogoFromGitHub();
+    } else {
+        // Local development - remove from localStorage
+        localStorage.removeItem('bellestrideLogo');
+        const defaultLogo = '<div class="w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-400 rounded-full flex items-center justify-center"><i class="fas fa-high-heel text-white text-lg"></i></div>';
+        document.getElementById('header-logo').innerHTML = defaultLogo;
+        const currentLogoImg = document.getElementById('current-logo');
+        if (currentLogoImg) {
+            currentLogoImg.src = '';
+        }
+        const logoPreview = document.getElementById('logo-preview');
+        if (logoPreview) {
+            logoPreview.src = '';
+            logoPreview.classList.add('hidden');
+        }
+        showNotification('Logo reset to default', 'success');
+    }
+}
+
+// GitHub API Functions
+async function loadLogoFromGitHub() {
+    try {
+        const logoUrl = `https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.logoPath}`;
+        const response = await fetch(logoUrl);
+        
+        if (response.ok) {
+            const data = await response.json();
+            const logoData = atob(data.content);
+            updateLogoDisplay(`data:image/png;base64,${logoData}`);
+            
+            const currentLogoImg = document.getElementById('current-logo');
+            if (currentLogoImg) {
+                currentLogoImg.src = `data:image/png;base64,${logoData}`;
+            }
+        } else {
+            // No custom logo found, use default
+            const defaultLogo = '<div class="w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-400 rounded-full flex items-center justify-center"><i class="fas fa-high-heel text-white text-lg"></i></div>';
+            document.getElementById('header-logo').innerHTML = defaultLogo;
+        }
+    } catch (error) {
+        console.log('No custom logo found, using default');
+        const defaultLogo = '<div class="w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-400 rounded-full flex items-center justify-center"><i class="fas fa-high-heel text-white text-lg"></i></div>';
+        document.getElementById('header-logo').innerHTML = defaultLogo;
+    }
+}
+
+async function saveLogoToGitHub(logoData) {
+    const token = prompt('Enter GitHub Personal Access Token (with repo scope):');
+    if (!token) {
+        showNotification('GitHub token required for logo upload', 'error');
+        return;
+    }
+    
+    try {
+        // Convert base64 to base64 without data URL prefix
+        const base64Data = logoData.split(',')[1];
+        
+        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.logoPath}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: 'Update logo',
+                content: base64Data,
+                branch: githubConfig.branch
+            })
+        });
+        
+        if (response.ok) {
+            updateLogoDisplay(logoData);
+            const currentLogoImg = document.getElementById('current-logo');
+            if (currentLogoImg) {
+                currentLogoImg.src = logoData;
+            }
+            showNotification('Logo uploaded to GitHub! Changes will be visible after GitHub Pages rebuild (1-2 minutes).', 'success');
+        } else {
+            const error = await response.json();
+            showNotification(`GitHub error: ${error.message}`, 'error');
+        }
+    } catch (error) {
+        showNotification('Failed to upload logo to GitHub', 'error');
+    }
+}
+
+async function deleteLogoFromGitHub() {
+    const token = prompt('Enter GitHub Personal Access Token (with repo scope):');
+    if (!token) {
+        showNotification('GitHub token required for logo deletion', 'error');
+        return;
+    }
+    
+    try {
+        // First get the current file SHA
+        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.logoPath}`, {
+            headers: {
+                'Authorization': `token ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            // Delete the file
+            const deleteResponse = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.logoPath}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: 'Remove custom logo',
+                    sha: data.sha,
+                    branch: githubConfig.branch
+                })
+            });
+            
+            if (deleteResponse.ok) {
+                const defaultLogo = '<div class="w-10 h-10 bg-gradient-to-br from-pink-500 to-orange-400 rounded-full flex items-center justify-center"><i class="fas fa-high-heel text-white text-lg"></i></div>';
+                document.getElementById('header-logo').innerHTML = defaultLogo;
+                const currentLogoImg = document.getElementById('current-logo');
+                if (currentLogoImg) {
+                    currentLogoImg.src = '';
+                }
+                const logoPreview = document.getElementById('logo-preview');
+                if (logoPreview) {
+                    logoPreview.src = '';
+                    logoPreview.classList.add('hidden');
+                }
+                showNotification('Logo deleted from GitHub! Changes will be visible after GitHub Pages rebuild.', 'success');
+            } else {
+                const error = await deleteResponse.json();
+                showNotification(`GitHub error: ${error.message}`, 'error');
+            }
+        } else {
+            showNotification('No custom logo found to delete', 'info');
+        }
+    } catch (error) {
+        showNotification('Failed to delete logo from GitHub', 'error');
+    }
+}
+
+// GitHub Data Sync Functions for Products
+async function loadProductsFromGitHub() {
+    if (!githubConfig.repo || !githubConfig.token) {
+        return false;
+    }
+    
+    try {
+        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.productsPath}`, {
+            headers: {
+                'Authorization': `token ${githubConfig.token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            const content = atob(data.content);
+            products = JSON.parse(content);
+            saveToLocalStorage(); // Update local cache
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.log('No products data on GitHub yet');
+        return false;
+    }
+}
+
+async function saveProductsToGitHub() {
+    if (!githubConfig.repo || !githubConfig.token) {
+        return false;
+    }
+    
+    try {
+        const content = btoa(JSON.stringify(products, null, 2));
+        
+        // First check if file exists
+        const checkResponse = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.productsPath}`, {
+            headers: {
+                'Authorization': `token ${githubConfig.token}`
+            }
+        });
+        
+        let body = {
+            message: 'Update products data',
+            content: content,
+            branch: githubConfig.branch
+        };
+        
+        if (checkResponse.ok) {
+            const data = await checkResponse.json();
+            body.sha = data.sha;
+        }
+        
+        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.productsPath}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${githubConfig.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+        
+        return response.ok;
+    } catch (error) {
+        console.error('Failed to save products to GitHub:', error);
+        return false;
+    }
+}
+
+// GitHub Data Sync Functions for Orders
+async function loadOrdersFromGitHub() {
+    if (!githubConfig.repo || !githubConfig.token) {
+        return false;
+    }
+    
+    try {
+        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.ordersPath}`, {
+            headers: {
+                'Authorization': `token ${githubConfig.token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            const content = atob(data.content);
+            orders = JSON.parse(content);
+            localStorage.setItem('bellestride_orders', JSON.stringify(orders)); // Update local cache
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.log('No orders data on GitHub yet');
+        return false;
+    }
+}
+
+async function saveOrdersToGitHub() {
+    if (!githubConfig.repo || !githubConfig.token) {
+        return false;
+    }
+    
+    try {
+        const content = btoa(JSON.stringify(orders, null, 2));
+        
+        // First check if file exists
+        const checkResponse = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.ordersPath}`, {
+            headers: {
+                'Authorization': `token ${githubConfig.token}`
+            }
+        });
+        
+        let body = {
+            message: 'Update orders data',
+            content: content,
+            branch: githubConfig.branch
+        };
+        
+        if (checkResponse.ok) {
+            const data = await checkResponse.json();
+            body.sha = data.sha;
+        }
+        
+        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.ordersPath}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${githubConfig.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+        
+        return response.ok;
+    } catch (error) {
+        console.error('Failed to save orders to GitHub:', error);
+        return false;
+    }
+}
+
+// GitHub Configuration Functions
+function saveGitHubConfig() {
+    const tokenInput = document.getElementById('github-token');
+    const token = tokenInput.value.trim();
+    
+    if (!token) {
+        showNotification('Please enter a GitHub token', 'error');
+        return;
+    }
+    
+    githubConfig.token = token;
+    localStorage.setItem('bellestride_github_token', token);
+    
+    // Auto-detect repo if on GitHub Pages
+    if (window.location.hostname.includes('github.io')) {
+        const pathParts = window.location.pathname.split('/');
+        if (pathParts.length > 1) {
+            githubConfig.repo = pathParts[1];
+        }
+    }
+    
+    showNotification('GitHub configuration saved! Your data will now sync across devices.', 'success');
+    updateGitHubStatus('Configuration saved. Sync enabled.', 'success');
+}
+
+function testGitHubConnection() {
+    const statusDiv = document.getElementById('github-status');
+    statusDiv.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing connection...';
+    
+    const token = document.getElementById('github-token').value.trim() || githubConfig.token;
+    
+    if (!token) {
+        statusDiv.innerHTML = '<span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Please enter a token first</span>';
+        return;
+    }
+    
+    // Test with GitHub API
+    fetch('https://api.github.com/user', {
+        headers: {
+            'Authorization': `token ${token}`
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.json();
+        }
+        throw new Error('Invalid token');
+    })
+    .then(data => {
+        statusDiv.innerHTML = `<span class="text-green-600"><i class="fas fa-check-circle mr-2"></i>Connected as ${data.login}</span>`;
+        showNotification('GitHub connection successful!', 'success');
+    })
+    .catch(error => {
+        statusDiv.innerHTML = '<span class="text-red-600"><i class="fas fa-times-circle mr-2"></i>Connection failed. Check your token.</span>';
+        showNotification('GitHub connection failed. Please check your token.', 'error');
+    });
+}
+
+function updateGitHubStatus(message, type) {
+    const statusDiv = document.getElementById('github-status');
+    const colorClass = type === 'success' ? 'text-green-600' : 'text-red-600';
+    const icon = type === 'success' ? 'fa-check-circle' : 'fa-times-circle';
+    statusDiv.innerHTML = `<span class="${colorClass}"><i class="fas ${icon} mr-2"></i>${message}</span>`;
+}
+
+// Load GitHub token from localStorage on startup
+function loadGitHubConfig() {
+    const savedToken = localStorage.getItem('bellestride_github_token');
+    if (savedToken) {
+        githubConfig.token = savedToken;
+        const tokenInput = document.getElementById('github-token');
+        if (tokenInput) {
+            tokenInput.value = savedToken;
+        }
+    }
+    
+    // Auto-detect repo if on GitHub Pages
+    if (window.location.hostname.includes('github.io')) {
+        const pathParts = window.location.pathname.split('/');
+        if (pathParts.length > 1) {
+            githubConfig.repo = pathParts[1];
+        }
+    }
+}
+
+// Preview logo on file selection
 document.addEventListener('DOMContentLoaded', function() {
-    loadFromLocalStorage();
+    const logoUpload = document.getElementById('logo-upload');
+    if (logoUpload) {
+        logoUpload.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('logo-preview');
+                    preview.src = e.target.result;
+                    preview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+});
+
+// Initialize App
+document.addEventListener('DOMContentLoaded', async function() {
+    loadGitHubConfig();
+    await loadFromLocalStorage();
     initializeSampleProducts();
     renderProducts();
     updateCartUI();
+    loadAdminOrders();
+    initializeLogo();
 });
 
 // Local Storage Management
-function saveToLocalStorage() {
+async function saveToLocalStorage() {
     localStorage.setItem('bellestride_products', JSON.stringify(products));
     localStorage.setItem('bellestride_cart', JSON.stringify(cart));
     localStorage.setItem('bellestride_orders', JSON.stringify(orders));
+    
+    // Sync to GitHub if configured
+    if (githubConfig.token && githubConfig.repo) {
+        await saveProductsToGitHub();
+        await saveOrdersToGitHub();
+    }
 }
 
-function loadFromLocalStorage() {
+async function loadFromLocalStorage() {
     const savedProducts = localStorage.getItem('bellestride_products');
     const savedCart = localStorage.getItem('bellestride_cart');
     const savedOrders = localStorage.getItem('bellestride_orders');
     
-    if (savedProducts) products = JSON.parse(savedProducts);
-    if (savedCart) cart = JSON.parse(savedCart);
-    if (savedOrders) orders = JSON.parse(savedOrders);
+    // Try to load from GitHub first if configured
+    if (githubConfig.token && githubConfig.repo) {
+        const loadedFromGitHub = await loadProductsFromGitHub();
+        if (loadedFromGitHub) {
+            await loadOrdersFromGitHub();
+        }
+    }
+    
+    // Fallback to localStorage if GitHub not configured or failed
+    if (!githubConfig.token && savedProducts) {
+        products = JSON.parse(savedProducts);
+    }
+    if (savedCart) {
+        cart = JSON.parse(savedCart);
+    }
+    if (!githubConfig.token && savedOrders) {
+        orders = JSON.parse(savedOrders);
+    }
 }
 
 // Initialize Sample Products
@@ -72,7 +567,7 @@ function initializeSampleProducts() {
                 name: "Men's Classic Oxford",
                 price: 9500,
                 category: "men",
-                image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=500&h=500&fit=crop",
+                image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=500&h=500&fit=crop",
                 description: "Timeless leather oxford shoes for gentlemen"
             },
             {
@@ -328,7 +823,7 @@ function closeCheckoutModal() {
     document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-function placeOrder(event) {
+async function placeOrder(event) {
     event.preventDefault();
     
     const form = event.target;
@@ -340,18 +835,22 @@ function placeOrder(event) {
         items: [...cart],
         total: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
         date: new Date().toISOString(),
-        status: 'pending'
+        status: 'pending',
+        statusHistory: [{
+            status: 'pending',
+            timestamp: new Date().toISOString()
+        }]
     };
     
     orders.push(orderData);
-    saveToLocalStorage();
+    await saveToLocalStorage();
     
     // Show confirmation
     showOrderConfirmation(orderData);
     
     // Clear cart and close modal
     cart = [];
-    saveToLocalStorage();
+    await saveToLocalStorage();
     updateCartUI();
     closeCheckoutModal();
     form.reset();
@@ -401,7 +900,7 @@ function loginAdmin() {
     }
 }
 
-function addProduct(event) {
+async function addProduct(event) {
     event.preventDefault();
     
     const form = event.target;
@@ -424,11 +923,11 @@ function addProduct(event) {
     };
     
     products.push(newProduct);
-    saveToLocalStorage();
+    await saveToLocalStorage(); // Immediate persistence with GitHub sync
     renderProducts();
     loadAdminProducts();
     
-    showNotification('Product added successfully!');
+    showNotification('Product added successfully! It will sync across devices.', 'success');
     form.reset();
     clearImage(); // Clear image preview
 }
@@ -459,36 +958,115 @@ function loadAdminProducts() {
     `).join('');
 }
 
-function deleteProduct(productId) {
-    if (confirm('Are you sure you want to delete this product?')) {
+async function deleteProduct(productId) {
+    if (confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
         products = products.filter(p => p.id !== productId);
-        saveToLocalStorage();
-        renderProducts();
-        loadAdminProducts();
-        showNotification('Product deleted successfully!');
+        await saveToLocalStorage(); // Immediate persistence with GitHub sync
+        renderProducts(); // Update main display
+        loadAdminProducts(); // Update admin display
+        showNotification('Product deleted permanently', 'success');
     }
 }
 
 function loadAdminOrders() {
-    const container = document.getElementById('orders-list');
-    const recentOrders = orders.slice(-5).reverse();
+    const ordersList = document.getElementById('admin-orders-list');
+    // Filter out completed orders - they should disappear when marked as complete
+    const activeOrders = orders.filter(order => order.status !== 'completed');
     
-    if (recentOrders.length === 0) {
-        container.innerHTML = '<p class="text-gray-500">No orders yet</p>';
-    } else {
-        container.innerHTML = recentOrders.map(order => `
-            <div class="bg-white border rounded-lg p-4">
-                <div class="flex justify-between items-start mb-2">
-                    <div>
-                        <h4 class="font-semibold">Order #${order.id}</h4>
-                        <p class="text-sm text-gray-600">${order.customerName} - ${order.phoneNumber}</p>
-                        <p class="text-sm text-gray-600">${order.location} - Ksh ${order.total.toLocaleString()}</p>
-                    </div>
-                    <span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">${order.status}</span>
+    if (activeOrders.length === 0) {
+        ordersList.innerHTML = '<p class="text-gray-500">No active orders</p>';
+        return;
+    }
+    
+    ordersList.innerHTML = activeOrders.map(order => `
+        <div class="border rounded-lg p-4 mb-4">
+            <div class="flex justify-between items-start mb-3">
+                <div>
+                    <h4 class="font-semibold mb-1">Order #${order.id}</h4>
+                    <span class="inline-block px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(order.status)}">
+                        ${getStatusText(order.status)}
+                    </span>
                 </div>
-                <p class="text-xs text-gray-500">${new Date(order.date).toLocaleString()}</p>
+                <select onchange="updateOrderStatus(${order.id}, this.value)" class="px-2 py-1 border rounded text-sm">
+                    <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Pending</option>
+                    <option value="confirmed" ${order.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
+                    <option value="processing" ${order.status === 'processing' ? 'selected' : ''}>Processing</option>
+                    <option value="completed" ${order.status === 'completed' ? 'selected' : ''}>Completed</option>
+                    <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                </select>
             </div>
-        `).join('');
+            <p class="text-sm text-gray-600">Customer: ${order.customerName}</p>
+            <p class="text-sm text-gray-600">Phone: ${order.customerPhone}</p>
+            <p class="text-sm text-gray-600">Location: ${order.location}</p>
+            <p class="text-sm text-gray-600">Total: Ksh ${order.total.toLocaleString()}</p>
+            <p class="text-sm text-gray-600">Date: ${new Date(order.date).toLocaleString()}</p>
+            ${order.notes ? `<p class="text-sm text-blue-600 mt-2"><strong>Notes:</strong> ${order.notes}</p>` : ''}
+            <div class="mt-2">
+                <strong>Items:</strong>
+                <ul class="list-disc list-inside text-sm">
+                    ${order.items.map(item => `
+                        <li>${item.name} x${item.quantity} - Ksh ${item.price.toLocaleString()}</li>
+                    `).join('')}
+                </ul>
+            </div>
+            <div class="mt-3">
+                <input type="text" placeholder="Add notes..." class="w-full px-2 py-1 border rounded text-sm" 
+                       onblur="addOrderNote(${order.id}, this.value)">
+            </div>
+        </div>
+    `).join('');
+}
+
+function getStatusStyle(status) {
+    const styles = {
+        pending: 'bg-yellow-100 text-yellow-800',
+        confirmed: 'bg-blue-100 text-blue-800',
+        processing: 'bg-purple-100 text-purple-800',
+        completed: 'bg-green-100 text-green-800',
+        cancelled: 'bg-gray-100 text-gray-800'
+    };
+    return styles[status] || styles.pending;
+}
+
+function getStatusText(status) {
+    const texts = {
+        pending: 'Order Received',
+        confirmed: 'Order Confirmed',
+        processing: 'Preparing Order',
+        completed: 'Order Delivered',
+        cancelled: 'Order Cancelled'
+    };
+    return texts[status] || 'Order Received';
+}
+
+async function updateOrderStatus(orderId, newStatus) {
+    const order = orders.find(o => o.id === orderId);
+    if (order) {
+        order.status = newStatus;
+        order.statusHistory = order.statusHistory || [];
+        order.statusHistory.push({
+            status: newStatus,
+            timestamp: new Date().toISOString()
+        });
+        await saveToLocalStorage();
+        
+        if (newStatus === 'completed') {
+            showNotification(`Order #${orderId} marked as completed and removed from active orders`, 'success');
+        } else {
+            showNotification(`Order #${orderId} updated to ${getStatusText(newStatus)}`, 'success');
+        }
+        
+        loadAdminOrders();
+    }
+}
+
+async function addOrderNote(orderId, note) {
+    const order = orders.find(o => o.id === orderId);
+    if (order && note.trim()) {
+        order.notes = note.trim();
+        await saveToLocalStorage();
+        loadAdminOrders();
+        showNotification('Note added to order', 'success');
     }
 }
 
