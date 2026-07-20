@@ -8,7 +8,7 @@ let currentFilter = 'all';
 
 // GitHub Pages Compatible Data Management
 let githubConfig = {
-    repo: '', // Will be set automatically
+    repo: 'jillianondieki60-design/bellestride', // Full owner/repo, auto-detected on GitHub Pages
     branch: 'main',
     logoPath: 'assets/logo.png',
     productsPath: 'data/products.json',
@@ -16,14 +16,25 @@ let githubConfig = {
     token: '' // Will be set by admin
 };
 
+// Detect the full "owner/repo" slug when running on GitHub Pages.
+// Owner comes from the "username.github.io" hostname, repo from the first path segment.
+function detectGitHubRepo() {
+    if (window.location.hostname.includes('github.io')) {
+        const owner = window.location.hostname.split('.')[0];
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        const repoName = pathParts.length > 0 ? pathParts[0] : '';
+        if (owner && repoName) {
+            return `${owner}/${repoName}`;
+        }
+    }
+    return 'jillianondieki60-design/bellestride';
+}
+
 // Logo Management Functions
 function initializeLogo() {
     // Try to detect GitHub Pages environment
     if (window.location.hostname.includes('github.io')) {
-        const pathParts = window.location.pathname.split('/');
-        if (pathParts.length > 1) {
-            githubConfig.repo = pathParts[1];
-        }
+        githubConfig.repo = detectGitHubRepo();
         loadLogoFromGitHub();
     } else {
         // Fallback to localStorage for local development
@@ -237,22 +248,19 @@ async function deleteLogoFromGitHub() {
 
 // GitHub Data Sync Functions for Products
 async function loadProductsFromGitHub() {
-    if (!githubConfig.repo || !githubConfig.token) {
+    // Public read: only the repo is required, no token needed.
+    if (!githubConfig.repo) {
         return false;
     }
     
     try {
-        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.productsPath}`, {
-            headers: {
-                'Authorization': `token ${githubConfig.token}`
-            }
-        });
+        const url = `https://raw.githubusercontent.com/${githubConfig.repo}/${githubConfig.branch}/${githubConfig.productsPath}?t=${Date.now()}`;
+        const response = await fetch(url, { cache: 'no-store' });
         
         if (response.ok) {
-            const data = await response.json();
-            const content = atob(data.content);
+            const content = await response.text();
             products = JSON.parse(content);
-            saveToLocalStorage(); // Update local cache
+            localStorage.setItem('bellestride_products', JSON.stringify(products)); // Update local cache
             return true;
         }
         return false;
@@ -306,20 +314,17 @@ async function saveProductsToGitHub() {
 
 // GitHub Data Sync Functions for Orders
 async function loadOrdersFromGitHub() {
-    if (!githubConfig.repo || !githubConfig.token) {
+    // Public read: only the repo is required, no token needed.
+    if (!githubConfig.repo) {
         return false;
     }
     
     try {
-        const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.ordersPath}`, {
-            headers: {
-                'Authorization': `token ${githubConfig.token}`
-            }
-        });
+        const url = `https://raw.githubusercontent.com/${githubConfig.repo}/${githubConfig.branch}/${githubConfig.ordersPath}?t=${Date.now()}`;
+        const response = await fetch(url, { cache: 'no-store' });
         
         if (response.ok) {
-            const data = await response.json();
-            const content = atob(data.content);
+            const content = await response.text();
             orders = JSON.parse(content);
             localStorage.setItem('bellestride_orders', JSON.stringify(orders)); // Update local cache
             return true;
@@ -386,13 +391,8 @@ function saveGitHubConfig() {
     githubConfig.token = token;
     localStorage.setItem('bellestride_github_token', token);
     
-    // Auto-detect repo if on GitHub Pages
-    if (window.location.hostname.includes('github.io')) {
-        const pathParts = window.location.pathname.split('/');
-        if (pathParts.length > 1) {
-            githubConfig.repo = pathParts[1];
-        }
-    }
+    // Auto-detect the full owner/repo slug
+    githubConfig.repo = detectGitHubRepo();
     
     showNotification('GitHub configuration saved! Your data will now sync across devices.', 'success');
     updateGitHubStatus('Configuration saved. Sync enabled.', 'success');
@@ -449,13 +449,8 @@ function loadGitHubConfig() {
         }
     }
     
-    // Auto-detect repo if on GitHub Pages
-    if (window.location.hostname.includes('github.io')) {
-        const pathParts = window.location.pathname.split('/');
-        if (pathParts.length > 1) {
-            githubConfig.repo = pathParts[1];
-        }
-    }
+    // Auto-detect the full owner/repo slug
+    githubConfig.repo = detectGitHubRepo();
 }
 
 // Preview logo on file selection
@@ -506,22 +501,22 @@ async function loadFromLocalStorage() {
     const savedCart = localStorage.getItem('bellestride_cart');
     const savedOrders = localStorage.getItem('bellestride_orders');
     
-    // Try to load from GitHub first if configured
-    if (githubConfig.token && githubConfig.repo) {
-        const loadedFromGitHub = await loadProductsFromGitHub();
-        if (loadedFromGitHub) {
-            await loadOrdersFromGitHub();
-        }
+    // Always attempt to load shared data from GitHub (public read, no token needed)
+    let productsLoaded = false;
+    let ordersLoaded = false;
+    if (githubConfig.repo) {
+        productsLoaded = await loadProductsFromGitHub();
+        ordersLoaded = await loadOrdersFromGitHub();
     }
     
-    // Fallback to localStorage if GitHub not configured or failed
-    if (!githubConfig.token && savedProducts) {
+    // Fall back to localStorage / sample data only if the GitHub fetch failed
+    if (!productsLoaded && savedProducts) {
         products = JSON.parse(savedProducts);
     }
     if (savedCart) {
         cart = JSON.parse(savedCart);
     }
-    if (!githubConfig.token && savedOrders) {
+    if (!ordersLoaded && savedOrders) {
         orders = JSON.parse(savedOrders);
     }
 }
