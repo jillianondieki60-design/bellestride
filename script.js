@@ -5,6 +5,7 @@ let products = [];
 let cart = [];
 let orders = [];
 let currentFilter = 'all';
+let productsLoadedFromGitHub = false; // True when products came from the shared GitHub source
 
 // GitHub Pages Compatible Data Management
 let githubConfig = {
@@ -508,6 +509,7 @@ async function loadFromLocalStorage() {
         productsLoaded = await loadProductsFromGitHub();
         ordersLoaded = await loadOrdersFromGitHub();
     }
+    productsLoadedFromGitHub = productsLoaded;
     
     // Fall back to localStorage / sample data only if the GitHub fetch failed
     if (!productsLoaded && savedProducts) {
@@ -523,7 +525,9 @@ async function loadFromLocalStorage() {
 
 // Initialize Sample Products
 function initializeSampleProducts() {
-    if (products.length === 0) {
+    // Only seed sample products when there is no shared GitHub source.
+    // If the shared products.json loaded (even as an empty list), respect it.
+    if (products.length === 0 && !productsLoadedFromGitHub) {
         products = [
             {
                 id: 1,
