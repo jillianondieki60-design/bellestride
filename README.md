@@ -14,7 +14,7 @@ A mobile-friendly web application for selling shoes with cash on delivery paymen
 - Responsive mobile design
 
 ### Admin Features
-- Password-protected admin panel (password: `admin123`)
+- Password-protected admin panel (password: `Jillian`)
 - Add new products with images
 - Delete products
 - View recent orders
