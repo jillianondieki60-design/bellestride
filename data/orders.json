@@ -17,11 +17,15 @@
     ],
     "total": 2500,
     "date": "2026-07-21T07:31:44.162Z",
-    "status": "pending",
+    "status": "completed",
     "statusHistory": [
       {
         "status": "pending",
         "timestamp": "2026-07-21T07:31:44.162Z"
+      },
+      {
+        "status": "completed",
+        "timestamp": "2026-07-21T07:32:17.946Z"
       }
     ]
   },
@@ -43,11 +47,15 @@
     ],
     "total": 2500,
     "date": "2026-07-21T07:31:48.464Z",
-    "status": "pending",
+    "status": "completed",
     "statusHistory": [
       {
         "status": "pending",
         "timestamp": "2026-07-21T07:31:48.464Z"
+      },
+      {
+        "status": "completed",
+        "timestamp": "2026-07-21T07:32:14.313Z"
       }
     ]
   }
