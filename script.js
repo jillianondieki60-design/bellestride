@@ -247,28 +247,63 @@ async function deleteLogoFromGitHub() {
     }
 }
 
+// Base64-encode a UTF-8 string. Plain btoa() throws on non-Latin1 characters
+// (e.g. emoji or accented text in product names), which would silently fail the save.
+function encodeBase64Utf8(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+}
+
+// Fetch a shared JSON data file from GitHub and return the parsed value (or null).
+// Primary: the contents API (raw media type) — returns fresh data (~60s cache), handles
+// files >1MB, and uses the admin token when present. raw.githubusercontent.com is avoided
+// as the primary source because its CDN caches for ~5 minutes and ignores cache-busting
+// query params, which made freshly added products appear to "disappear" on reload.
+// Fallback: raw.githubusercontent.com (no API rate limit) in case the API read fails.
+async function fetchDataFileFromGitHub(path) {
+    // Primary: GitHub contents API with the raw media type.
+    try {
+        const apiUrl = `https://api.github.com/repos/${githubConfig.repo}/contents/${path}?ref=${githubConfig.branch}&t=${Date.now()}`;
+        const headers = { 'Accept': 'application/vnd.github.raw' };
+        if (githubConfig.token) {
+            headers['Authorization'] = `token ${githubConfig.token}`;
+        }
+        const response = await fetch(apiUrl, { headers, cache: 'no-store' });
+        if (response.ok) {
+            return JSON.parse(await response.text());
+        }
+    } catch (error) {
+        // fall through to the raw fallback
+    }
+
+    // Fallback: raw file (no rate limit, but may be up to ~5 minutes stale).
+    try {
+        const rawUrl = `https://raw.githubusercontent.com/${githubConfig.repo}/${githubConfig.branch}/${path}?t=${Date.now()}`;
+        const response = await fetch(rawUrl, { cache: 'no-store' });
+        if (response.ok) {
+            return JSON.parse(await response.text());
+        }
+    } catch (error) {
+        // ignore
+    }
+
+    return null;
+}
+
 // GitHub Data Sync Functions for Products
 async function loadProductsFromGitHub() {
     // Public read: only the repo is required, no token needed.
     if (!githubConfig.repo) {
         return false;
     }
-    
-    try {
-        const url = `https://raw.githubusercontent.com/${githubConfig.repo}/${githubConfig.branch}/${githubConfig.productsPath}?t=${Date.now()}`;
-        const response = await fetch(url, { cache: 'no-store' });
-        
-        if (response.ok) {
-            const content = await response.text();
-            products = JSON.parse(content);
-            localStorage.setItem('bellestride_products', JSON.stringify(products)); // Update local cache
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.log('No products data on GitHub yet');
-        return false;
+
+    const data = await fetchDataFileFromGitHub(githubConfig.productsPath);
+    if (Array.isArray(data)) {
+        products = data;
+        localStorage.setItem('bellestride_products', JSON.stringify(products)); // Update local cache
+        return true;
     }
+    console.log('No products data on GitHub yet');
+    return false;
 }
 
 async function saveProductsToGitHub() {
@@ -277,7 +312,7 @@ async function saveProductsToGitHub() {
     }
     
     try {
-        const content = btoa(JSON.stringify(products, null, 2));
+        const content = encodeBase64Utf8(JSON.stringify(products, null, 2));
         
         // First check if file exists
         const checkResponse = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.productsPath}`, {
@@ -319,22 +354,15 @@ async function loadOrdersFromGitHub() {
     if (!githubConfig.repo) {
         return false;
     }
-    
-    try {
-        const url = `https://raw.githubusercontent.com/${githubConfig.repo}/${githubConfig.branch}/${githubConfig.ordersPath}?t=${Date.now()}`;
-        const response = await fetch(url, { cache: 'no-store' });
-        
-        if (response.ok) {
-            const content = await response.text();
-            orders = JSON.parse(content);
-            localStorage.setItem('bellestride_orders', JSON.stringify(orders)); // Update local cache
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.log('No orders data on GitHub yet');
-        return false;
+
+    const data = await fetchDataFileFromGitHub(githubConfig.ordersPath);
+    if (Array.isArray(data)) {
+        orders = data;
+        localStorage.setItem('bellestride_orders', JSON.stringify(orders)); // Update local cache
+        return true;
     }
+    console.log('No orders data on GitHub yet');
+    return false;
 }
 
 async function saveOrdersToGitHub() {
@@ -343,7 +371,7 @@ async function saveOrdersToGitHub() {
     }
     
     try {
-        const content = btoa(JSON.stringify(orders, null, 2));
+        const content = encodeBase64Utf8(JSON.stringify(orders, null, 2));
         
         // First check if file exists
         const checkResponse = await fetch(`https://api.github.com/repos/${githubConfig.repo}/contents/${githubConfig.ordersPath}`, {
@@ -492,9 +520,11 @@ async function saveToLocalStorage() {
     
     // Sync to GitHub if configured
     if (githubConfig.token && githubConfig.repo) {
-        await saveProductsToGitHub();
-        await saveOrdersToGitHub();
+        const productsSynced = await saveProductsToGitHub();
+        const ordersSynced = await saveOrdersToGitHub();
+        return { attempted: true, productsSynced, ordersSynced };
     }
+    return { attempted: false, productsSynced: false, ordersSynced: false };
 }
 
 async function loadFromLocalStorage() {
@@ -922,11 +952,17 @@ async function addProduct(event) {
     };
     
     products.push(newProduct);
-    await saveToLocalStorage(); // Immediate persistence with GitHub sync
+    const sync = await saveToLocalStorage(); // Immediate persistence with GitHub sync
     renderProducts();
     loadAdminProducts();
-    
-    showNotification('Product added successfully! It will sync across devices.', 'success');
+
+    if (sync.attempted && sync.productsSynced) {
+        showNotification('Product added and published! It will appear for everyone within ~1 minute.', 'success');
+    } else if (sync.attempted) {
+        showNotification('Saved locally but publishing to GitHub failed. Check your token has "repo" scope and is still valid.', 'error');
+    } else {
+        showNotification('Saved locally only. Add your GitHub token in the admin GitHub settings to publish it online.', 'error');
+    }
     form.reset();
     clearImage(); // Clear image preview
 }
@@ -960,10 +996,17 @@ function loadAdminProducts() {
 async function deleteProduct(productId) {
     if (confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
         products = products.filter(p => p.id !== productId);
-        await saveToLocalStorage(); // Immediate persistence with GitHub sync
+        const sync = await saveToLocalStorage(); // Immediate persistence with GitHub sync
         renderProducts(); // Update main display
         loadAdminProducts(); // Update admin display
-        showNotification('Product deleted permanently', 'success');
+
+        if (sync.attempted && sync.productsSynced) {
+            showNotification('Product deleted. The change will reflect for everyone within ~1 minute.', 'success');
+        } else if (sync.attempted) {
+            showNotification('Deleted locally but publishing to GitHub failed. Check your token has "repo" scope.', 'error');
+        } else {
+            showNotification('Deleted locally only. Add your GitHub token in the admin GitHub settings to publish the change.', 'error');
+        }
     }
 }
 
