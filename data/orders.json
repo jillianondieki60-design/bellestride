@@ -104,11 +104,19 @@
     ],
     "total": 5300,
     "date": "2026-07-21T07:34:24.424Z",
-    "status": "pending",
+    "status": "completed",
     "statusHistory": [
       {
         "status": "pending",
         "timestamp": "2026-07-21T07:34:24.424Z"
+      },
+      {
+        "status": "processing",
+        "timestamp": "2026-07-21T07:35:50.815Z"
+      },
+      {
+        "status": "completed",
+        "timestamp": "2026-07-21T07:35:54.984Z"
       }
     ]
   }
